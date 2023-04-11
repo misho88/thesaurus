@@ -28,6 +28,5 @@ install: all
 
 uninstall:
 	rm -f $(DESTDIR)$(BIN)/$(EXE)
-	rmdir --ignore-fail-on-non-empty $(DESTDIR)$(BIN)
 	rm -f $(DESTDIR)$(SHARE)/*.dat $(DESTDIR)$(SHARE)/*.idx
 	rmdir --ignore-fail-on-non-empty $(DESTDIR)$(SHARE)
