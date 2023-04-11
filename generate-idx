@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+
+from argparse import ArgumentParser
+parser = ArgumentParser()
+parser.add_argument('dat')
+args = parser.parse_args()
+
+
+def tell_iter(stream):
+    while True:
+        pos = stream.tell()
+        line = stream.readline()
+        if line:
+            yield pos, line
+        else:
+            return
+
+
+def skip_lines(stream, n_lines):
+    for _ in range(n_lines):
+        stream.readline()
+
+
+# get the encoding and entry count
+with open(args.dat) as dat:
+    encoding = dat.readline()
+    n_words = 0
+    for _, line in tell_iter(dat):
+        word, n_meanings = line.split('|')
+        skip_lines(dat, int(n_meanings))
+        n_words += 1
+
+print(encoding, n_words, sep='')
+
+with open(args.dat) as dat:
+    dat.readline()
+    for pos, line in tell_iter(dat):
+        word, n_meanings = line.split('|')
+        skip_lines(dat, int(n_meanings))
+        print(word, pos, sep='|')

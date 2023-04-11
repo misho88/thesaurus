@@ -1,0 +1,171 @@
+#!/usr/bin/env python
+
+from argparse import ArgumentParser
+from subprocess import Popen
+from re import compile
+from os import pipe, close, get_terminal_size
+from os.path import isfile, join
+from sys import stderr, argv
+from debug import debug
+from shlex import quote, split
+from natsort import humansorted
+
+
+clarification = compile(r' \(.*\)$')
+
+
+parser = ArgumentParser()
+parser.add_argument(
+    'words',
+    nargs='+',
+    help='the words to look up'
+)
+parser.add_argument(
+    '--depth', '-d',
+    type=int, default=0,
+    help='look up synonyms of synonyms up to depth (default: 0 to look up only the word)'
+)
+search = parser.add_mutually_exclusive_group()
+search.add_argument(
+    '-s', '--search',
+    default="grep -i '^{word}|'",
+    help="how to look up the word in the index file; default: grep -i '^{word}|', so some basic REGEXs are supported"
+)
+search.add_argument(
+    '-f', '--fuzzy',
+    action='store_true',
+    help='''fuzzy search; alias for --search "fzf --no-sort --filter '{word}'"'''
+)
+parser.add_argument(
+    '-l', '--language',
+    default='en_US',
+    help='language (corresponding *.dat/*.idx files must exist in CWD or /usr[/local]/share/thesaurus)',
+)
+args = parser.parse_args()
+
+
+for root in '.', '/usr/share/thesaurus', '/usr/local/share/thesaurus':
+    dat_file, idx_file = ( join(root, f'{args.language}.{ext}') for ext in ('dat', 'idx'))
+    if isfile(dat_file) and isfile(idx_file):
+        break
+else:
+    print(f'thesaurus: language {args.language} not found', file=stderr)
+    exit(2)
+
+if args.fuzzy:
+    args.search = "fzf --no-sort --filter '{word}'"
+
+try:
+    line_width = get_terminal_size().columns
+except OSError:
+    line_width = 0
+
+
+def pack(*args):
+    return args
+
+
+def format_word(word):
+    for match in clarification.finditer(word):
+        i = match.start()
+        return ''.join((quote(word[:i]), word[i:]))
+    else:
+        return quote(word)
+
+
+def sort_key(word):
+    for match in clarification.finditer(word):
+        return match.group().lower()
+    else:
+        return ''
+
+
+def print_words(words, prefix=''):
+    words = humansorted(words)
+    words = sorted(words, key=sort_key)
+
+    if not words:
+        return
+
+    words = [ format_word(word) for word in words ]
+
+    table_width = line_width - len(prefix)
+    column_width = max(len(word) for word in words) + 1
+    n_columns = max(1, table_width // column_width)
+    q, r = divmod(len(words), n_columns)
+    n_rows = q + (r != 0)
+
+    for i in range(n_rows):
+        print(end=prefix)
+        for j in range(n_columns):
+            idx = i * n_columns + j
+            if idx >= len(words):
+                break
+            print(words[idx].ljust(column_width), end='')
+        print()
+
+
+def find(word, exact=False):
+    rfd, wfd = pipe()
+    if rfd < 0 or wfd < 0:
+        print(f'{argv[0]}: failed to open pipe', file=stderr)
+        exit(1)
+
+    if exact:
+        cmdline = 'grep', '-im1', f'^{word}|'
+    else:
+        cmdline = split(args.search.format(word=word))
+
+    with open(idx_file, 'rb') as idx, Popen(cmdline, stdin=idx, stdout=wfd) as prc, open(rfd) as idx:
+        close(wfd)
+        for line in idx:
+            word, offs = line.split('|')
+            yield word, int(offs)
+        rv = prc.wait()
+        if rv == 2:  # man grep says this means an error; 1 means no match
+            exit(rv)
+
+
+def process_words(syns, skip=()):
+    for syn in syns:
+        if syn.strip() in skip:
+            continue
+        else:
+            yield syn
+
+
+def look_up(dat, entry, depth=args.depth, completed=None, parent=()):
+    if completed is None:
+        completed = set()
+
+    for match in clarification.finditer(entry):
+        find_word = entry[:match.start()]
+        break
+    else:
+        find_word = entry
+
+    for word, offs in find(find_word, depth < args.depth):
+        dat.seek(offs, 0)
+        spec = dat.readline()
+        word, n_syns = spec.split('|', maxsplit=1)
+        lines = [ next(dat) for _ in range(int(n_syns)) ]
+        completed.add(word)
+        prefix = '    ' * (args.depth - depth)
+        print(end=prefix)
+        print(entry if find_word == word else f'{word} (from {entry})', end=':\n')
+        all_syns = set()
+        for line in lines:
+            _type, *syns = line.rstrip().split('|')
+            syns = ( syn.strip() for syn in syns )
+            syns = ( syn for syn in syns if syn not in completed )
+            all_syns |= set(syns)
+        if depth > 0:
+            for syn in all_syns:
+                look_up(dat, syn, depth=depth - 1, completed=completed, parent=pack(*parent, word))
+        else:
+            print_words(process_words(all_syns, pack(*parent, word)), prefix + '    ')
+
+
+with open(dat_file) as dat:
+    for word in args.words:
+        look_up(dat, word)
