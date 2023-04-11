@@ -1,4 +1,4 @@
-THESAURI=en_US de_DE
+THESAURI?=en_US de_DE
 
 EXE=thesaurus
 DESTDIR?=
