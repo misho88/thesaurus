@@ -6,7 +6,6 @@ from re import compile
 from os import pipe, close, get_terminal_size
 from os.path import isfile, join
 from sys import stderr, argv
-from debug import debug
 from shlex import quote, split
 from natsort import humansorted
 
