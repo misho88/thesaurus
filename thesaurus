@@ -44,7 +44,7 @@ args = parser.parse_args()
 
 
 for root in '.', '/usr/share/thesaurus', '/usr/local/share/thesaurus':
-    dat_file, idx_file = ( join(root, f'{args.language}.{ext}') for ext in ('dat', 'idx'))
+    dat_file, idx_file = ( join(root, f'{args.language}.{ext}') for ext in ('dat', 'idx') )
     if isfile(dat_file) and isfile(idx_file):
         break
 else:
