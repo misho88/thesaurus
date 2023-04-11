@@ -17,8 +17,7 @@ de_DE.dat:
 	./generate-idx $< > $@
 
 clean:
-	rm -f $(addsuffix .dat,$(THESAURI))
-	rm -f $(addsuffix .idx,$(THESAURI))
+	rm -f $(addsuffix .dat,$(THESAURI)) $(addsuffix .idx,$(THESAURI))
 
 install: all
 	install -d $(DESTDIR)$(BIN)
